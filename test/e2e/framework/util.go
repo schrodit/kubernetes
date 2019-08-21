@@ -1092,12 +1092,23 @@ func CheckTestingNSDeletedExcept(c clientset.Interface, skip string) error {
 // whether there are any pods remaining in a non-terminating state.
 func deleteNS(c clientset.Interface, dynamicClient dynamic.Interface, namespace string, timeout time.Duration) error {
 	startTime := time.Now()
-	if err := c.CoreV1().Namespaces().Delete(namespace, nil); err != nil {
+
+	err := wait.PollImmediate(2*time.Second, 5*time.Minute, func() (bool, error) {
+		if err := c.CoreV1().Namespaces().Delete(namespace, nil); err != nil {
+			if apierrs.IsNotFound(err) {
+				return true, nil
+			}
+			e2elog.Logf("Error while trying to delete namespace: %v", err)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
 		return err
 	}
 
 	// wait for namespace to delete or timeout.
-	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
+	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
 		if _, err := c.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{}); err != nil {
 			if apierrs.IsNotFound(err) {
 				return true, nil
